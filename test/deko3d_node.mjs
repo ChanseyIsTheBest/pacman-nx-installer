@@ -1,42 +1,49 @@
 // Makes deko3d_glsl.bin from the game (package or folder) in Node, with the page's code (lib/deko3d.js). With pacman-nx's
 // native GLSL (out/deko3d_shaders/glsl_opt) it also compares the shaders text for text.
-// Usage: node test/deko3d_node.mjs <game package or folder> [<native glsl_opt folder>] [--out <file>]
+// Usage: node test/deko3d_node.mjs <game package or folder> <title update package or folder> [<native glsl_opt folder>] [--out <file>] [--image <the patched image to compare>]
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { chosenOnDisk, loadModules, root } from './node_files.mjs';
-import { findGame, gameContainers, identifyGame, lzxStep } from '../lib/installer.js';
+import { findGame, gameContainers, identifyGame, patchedImage } from '../lib/installer.js';
 import { buildDeko3dPackage } from '../lib/deko3d.js';
 import { imageContainers } from '../lib/shaders.js';
-import { readXexImage } from '../lib/xex.js';
 
 const args = process.argv.slice(2);
 const outAt = args.indexOf('--out');
 const out = outAt >= 0 ? args.splice(outAt, 2)[1] : null;
-const [input, reference] = args;
-if (!input) {
-  console.error('usage: node test/deko3d_node.mjs <game package or folder> [<native glsl_opt folder>] [--out <file>]');
+const imageAt = args.indexOf('--image');
+const imageRef = imageAt >= 0 ? args.splice(imageAt, 2)[1] : null;
+const [input, updateInput, reference] = args;
+if (!input || !updateInput) {
+  console.error('usage: node test/deko3d_node.mjs <game package or folder> <title update package or folder> [<native glsl_opt folder>] [--out <file>] [--image <file>]');
   process.exit(1);
 }
 const sha = (b) => createHash('sha256').update(b).digest('hex');
 const started = Date.now();
 
-const { game } = await findGame(chosenOnDisk([input]));
-if (!game) {
-  throw new Error(`no game in ${input}`);
+const chosen = await findGame(chosenOnDisk([input, updateInput]));
+if (!chosen.game || !chosen.update) {
+  throw new Error(`no game or title update in ${input}, ${updateInput}`);
 }
 const modules = await loadModules();
-const { xex, xexHash } = await identifyGame(game.files, { builds: [] });
-console.log(`default.xex SHA-256 ${xexHash}`);
+const { xex, xexHash, xexp, xexpHash } = await identifyGame(chosen, { builds: [] });
+console.log(`default.xex SHA-256 ${xexHash}, default.xexp ${xexpHash}`);
+const image = await patchedImage(xex, xexp, modules);
+console.log(`patched image: ${image.length} bytes, SHA-256 ${sha(image)}`);
+if (imageRef) {
+  const same = Buffer.compare(Buffer.from(image), fs.readFileSync(imageRef)) === 0;
+  console.log(`patched image ${same ? 'identical to' : 'DIFFERENT from'} ${imageRef}`);
+}
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'release/manifest.json'), 'utf8'));
 const list = manifest.builds[0]?.deko3d ?? { image_sha256: await (async () => {
   const hashes = new Set();
-  for (const c of imageContainers((await readXexImage(xex, lzxStep(modules.lzx))).image)) {
+  for (const c of imageContainers(image)) {
     hashes.add(sha(c.bytes));
   }
   return [...hashes];
 })() };
-const containers = await gameContainers(xex, list, lzxStep(modules.lzx));
+const containers = await gameContainers(xex, xexp, list, modules);
 console.log(`${containers.length} containers (${list.image_sha256.length} in default.xex)`);
 
 const common = fs.readFileSync(path.join(root, 'renut_shader_common.h'));

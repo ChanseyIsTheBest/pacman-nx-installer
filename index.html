@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>pacman-nx installer</title>
-  <meta name="description" content="Builds the Nintendo Switch package of PAC-MAN Championship Edition DX from your own Xbox 360 copy, in your browser.">
+  <meta name="description" content="Builds the Nintendo Switch package of PAC-MAN Championship Edition DX+ from your own Xbox 360 copy and its Title Update 3, in your browser.">
   <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="icons/icon-16.png">
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
@@ -113,8 +113,9 @@
 
   <section>
     <h2 data-i18n="step1">1. Choose your game</h2>
-    <label class="button" for="package" data-i18n="formatPackage">Game package</label>
-    <label class="button" for="folder" data-i18n="formatFolder">Folder</label>
+    <label class="button" for="package" data-i18n="formatPackage">Add files</label>
+    <label class="button" for="folder" data-i18n="formatFolder">Add a folder</label>
+    <button id="clear" type="button" data-i18n="clear">Clear</button>
     <input id="package" type="file" multiple>
     <input id="folder" type="file" webkitdirectory>
     <p class="note" data-i18n-html="ownCopy"></p>

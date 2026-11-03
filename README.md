@@ -1,26 +1,31 @@
 <div align=center>
 
-<img src="icons/icon-192.png" alt="PAC-MAN Championship Edition DX" width="20%">
+<img src="icons/icon-192.png" alt="PAC-MAN Championship Edition DX+" width="20%">
 
 </div>
 <h1 align=center>pacman-nx installer</h1>
 
 The installer page of [pacman-nx](https://github.com/ChanseyIsTheBest/pacman-nx), the native Nintendo Switch port of
-PAC-MAN Championship Edition DX (Xbox 360): **https://chanseyisthebest.github.io/pacman-nx-installer/**
+PAC-MAN Championship Edition DX+ (Xbox 360): **https://chanseyisthebest.github.io/pacman-nx-installer/**
 
-You give it your own copy of the game (its Xbox 360 package, or a folder you extracted it into), with the DLC package if you
-have it, and it gives you a zip ready to extract into `sdmc:/switch/`. Everything runs in your browser: the game files never
+You give it your own copy of the game and its Title Update 3 (each as its Xbox 360 package, or a folder you extracted it into),
+with the DLC package if you have it, and it gives you a zip ready to extract into `sdmc:/switch/`. Everything runs in your browser: the game files never
 leave your computer.
 
 ## What it does
 
-1. Finds the game in what you chose: the package (`Content/<profile>/58410A8C/000D0000`, read in place by `lib/stfs.js`;
-   nothing is extracted to disk), or a folder with `default.xex`. The DLC package of the game (content type 2 of title
-   `58410A8C`) is picked up too, wherever it is among the chosen files.
-2. Identifies the game by the SHA-256 of `default.xex` and picks its build from `release/manifest.json`.
+1. Finds your files in what you chose, in any number of choices: the game's package (`Content/<profile>/58410A8C/000D0000`, read
+   in place by `lib/stfs.js`; nothing is extracted to disk) or a folder with `default.xex`; Title Update 3's package
+   (`Content/0000000000000000/58410A8C/000B0000`, content type `0x000B0000`) or a folder with `default.xexp`; and the DLC package
+   (content type 2 of title `58410A8C`), wherever it is among the chosen files.
+2. Identifies the game by the SHA-256 of `default.xex` and picks its build from `release/manifest.json`, then checks the title
+   update by the SHA-256 of `default.xexp`. Without Title Update 3 no package is made: the program is compiled from the update's
+   code, and only the update's game uses the DLC.
 3. Downloads that build's NRO and checks its SHA-256.
-4. Makes the shaders of the deko3d renderer. 13 of the game's 17 shaders are Direct3D shader containers in `default.xex`,
-   which is decrypted and unpacked in the page (`lib/xex.js`, with libmspack's LZX decoder in WebAssembly). Each container
+4. Makes the shaders of the deko3d renderer. 13 of the game's 17 shaders are Direct3D shader containers in the executable. It
+   is decrypted and unpacked in the page (`lib/xex.js`, with libmspack's LZX decoder in WebAssembly), and the title update is
+   applied to it as the console does (`lib/xexp.js`, from guwange-nx-installer, with the LZX delta decoder): the update's
+   containers are not the original game's. Each container
    goes through pacman-nx's native chain: Renut's XenosRecomp translates it to HLSL (`wasm/renut_hlsl`), the alpha-tested pixel
    shaders get their early alpha copy (`lib/early_alpha.js`), DXC compiles it to SPIR-V (`wasm/dxc_web`), SPIRV-Cross turns that
    into GLSL (`wasm/spirv_cross`), banjo-nx's passes trim it (`lib/deko3d_glsl.js`) and `lib/deko3d_package.js` packs them. The
@@ -29,9 +34,10 @@ leave your computer.
    with uam the first time the game uses it and keeps the result.
 5. Streams the zip to disk through the service worker.
 
-The zip holds `pacman-nx/pacman-nx.nro` with its `LICENSES.txt`, `deko3d_glsl.bin`, the game in `game_root/` and, if you chose
-it, the DLC in `dlc/` (the game installs it at its first start). The update zip holds the NRO, its licenses and the shaders
-(and the DLC if you chose it). Neither holds `pacman.toml`: the game writes it at its first start, so an update never
+The zip holds `pacman-nx/pacman-nx.nro` with its `LICENSES.txt`, `deko3d_glsl.bin`, the game in `game_root/` with the title
+update's `default.xexp` beside `default.xex` (the console applies it at start), the update's other files in `update/` (the game
+opens them as `UPDATE:\`) and, if you chose it, the DLC in `dlc/` (the game installs it at its first start). The update zip
+holds the NRO, its licenses, the shaders and the title update (and the DLC if you chose it). Neither holds `pacman.toml`: the game writes it at its first start, so an update never
 overwrites your settings.
 
 The page and the downloaded program are cached by the service worker: after the first visit it also works without a
@@ -45,7 +51,7 @@ connection.
 | `worker.js` | Builds the package off the main thread |
 | `sw.js` | Offline cache and the download stream |
 | `lib/` | Package reader (STFS), XEX reader, the deko3d shaders (`shaders.js`, `deko3d.js`, `early_alpha.js`, `deko3d_glsl.js`, `deko3d_package.js`), zip writer |
-| `wasm/` | WebAssembly builds of the shader translator, DXC, SPIRV-Cross and the LZX decoder |
+| `wasm/` | WebAssembly builds of the shader translator, DXC, SPIRV-Cross and the LZX decoders |
 | `renut_shader_common.h` | Renut's translator's HLSL header (from `app/thirdparty/reblue-XenosRecomp/XenosRecomp` of pacman-nx) |
 | `release/` | The list of builds and the licenses of the NRO |
 | `test/` | Node scripts that run the same code as the page |
@@ -65,7 +71,7 @@ To publish a new build, this script writes the build's entry in `release/manifes
 the page's code:
 
 ```sh
-node test/release_node.mjs <game package or folder> <pacman-nx.nro> --version 1.0.0 --write
+node test/release_node.mjs <game package or folder> <title update package or folder> <pacman-nx.nro> --version 1.0.0 --write
 ```
 
 It leaves the page's `deko3d_glsl.bin` in `release/` (not committed): test the NRO with exactly that file next to it.
@@ -81,9 +87,10 @@ python serve.py 8193
 Then open http://127.0.0.1:8193/. The same code runs in Node:
 
 ```sh
-node test/package_node.mjs pacman-nx.zip <game package or folder> [<DLC package> ...]
-node test/package_node.mjs pacman-nx-update.zip <game package or folder> --update
-node test/deko3d_node.mjs <game package or folder> [<pacman-nx's out/deko3d_shaders/glsl_opt>] [--out deko3d_glsl.bin]
+node test/package_node.mjs pacman-nx.zip <game package or folder> <title update package or folder> [<DLC package> ...]
+node test/package_node.mjs pacman-nx-update.zip <game package or folder> <title update package or folder> --update
+node test/deko3d_node.mjs <game package or folder> <title update package or folder> [<the update's glsl_opt>] [--out deko3d_glsl.bin]
+node test/choose_node.mjs <game package> <title update package> <DLC package> <game folder> <update folder with default.xexp> <SD folder pacman-nx>
 node test/texts_node.mjs
 ```
 

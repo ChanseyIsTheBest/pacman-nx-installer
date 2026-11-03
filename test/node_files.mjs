@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import createDxcModule from '../wasm/dxc_web.mjs';
 import createLzxModule from '../wasm/lzx.mjs';
+import createLzxDeltaModule from '../wasm/lzxdelta.mjs';
 import createRenutHlslModule from '../wasm/renut_hlsl.mjs';
 import createSpirvCrossModule from '../wasm/spirv_cross.mjs';
 
@@ -69,6 +70,7 @@ export async function loadModules(verbose = false) {
   return {
     dxc: await createDxcModule(options('dxc')),
     lzx: await createLzxModule(options('lzx')),
+    lzxDelta: await createLzxDeltaModule(options('lzxdelta')),
     // the deko3d renderer's (lib/deko3d.js)
     renutHlsl: await createRenutHlslModule(options('renut_hlsl')),
     spirvCross: await createSpirvCrossModule(options('spirv_cross')),

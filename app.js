@@ -13,7 +13,7 @@ const detail = document.getElementById('detail');
 const fingerprint = document.getElementById('fingerprint');
 const languages = document.getElementById('languages');
 const sourceLink = document.getElementById('sourceLink');
-const TITLE = 'PAC-MAN Championship Edition DX';
+const TITLE = 'PAC-MAN Championship Edition DX+';
 const manifest = fetch('./release/manifest.json').then((r) => r.json());
 const LANGUAGE_KEY = 'pacman-nx.language';
 // the files the player chose ([{ path, file }]) and what was found in them
@@ -25,7 +25,7 @@ let detectedView = null;
 // the frame that opened the last download
 let downloadFrame = null;
 let busy = false;
-// whether the chosen game has all its files (an extracted folder may not): otherwise only the update can be made
+// whether the chosen game has all its files (an extracted folder may not): otherwise only the update package can be made
 let complete = false;
 
 // On GitHub Pages (<owner>.github.io/<repository>) the source code is the owner's pacman-nx repository.
@@ -53,8 +53,14 @@ function renderChosen() {
   }
   const lines = [];
   if (chosenView.game) {
-    const name = chosenView.game.name || chosenView.label || 'default.xex';
+    const name = chosenView.game.name || 'default.xex';
     lines.push(t('chosenGame', { name, size: formatSize(chosenView.game.size) }));
+  }
+  if (chosenView.update) {
+    const name = chosenView.update.name || 'default.xexp';
+    lines.push(t('chosenUpdate', { name, size: formatSize(chosenView.update.size) }));
+  } else {
+    lines.push(t('chosenNoUpdate'));
   }
   for (const d of chosenView.dlc) {
     lines.push(t('chosenDlc', { name: d.name, size: formatSize(d.size) }));
@@ -91,6 +97,9 @@ function renderDetected() {
       break;
     case 'supported':
       showDetected('good', TITLE, t(v.dlc ? 'supportedWithDlc' : 'supported'));
+      break;
+    case 'problem':
+      showDetected('bad', TITLE, t(v.code));
       break;
     case 'incomplete':
       showDetected('bad', TITLE, t('incompleteGame', { count: v.count, expected: v.expected }));
@@ -159,37 +168,44 @@ function asFiles(entries) {
   }));
 }
 
-// Finds the game in what was chosen and identifies it as soon as it is chosen.
-// label: the name of the chosen folder (its files come without it)
-async function choose(entries, label = '') {
+// Every file chosen so far ([{ path, file }]): the game, its title update and the DLC may come from separate choices.
+let entriesSoFar = [];
+
+// Finds the game and its title update in everything chosen so far and identifies them.
+async function choose(added) {
   const id = ++check;
+  const seen = new Set(entriesSoFar.map((e) => e.path));
+  entriesSoFar = entriesSoFar.concat(added.filter((e) => !seen.has(e.path)));
   source = null;
   setButtons(false);
-  chosenView = null;
-  renderChosen();
   detectedView = { kind: 'checking' };
   renderDetected();
   try {
-    const found = await findGame(asFiles(entries));
+    const found = await findGame(asFiles(entriesSoFar));
     if (id !== check) {
       return;
     }
-    chosenView = { game: found.game, dlc: found.dlc, label };
+    chosenView = { game: found.game, update: found.update, dlc: found.dlc };
     renderChosen();
     if (!found.game) {
       detectedView = { kind: 'notGame', other: found.others[0] };
     } else {
-      const game = await identifyGame(found.game.files, await manifest);
+      const game = await identifyGame(found, await manifest);
       if (id !== check) {
         return;
       }
       if (game.build) {
-        source = entries;
-        complete = found.game.files.length >= game.build.game_files;
-        detectedView = complete
-          ? { kind: 'supported', dlc: found.dlc.length > 0 }
-          : { kind: 'incomplete', count: found.game.files.length, expected: game.build.game_files };
-        setButtons(true);
+        const ready = !game.problems.length;
+        source = ready ? entriesSoFar : null;
+        complete = ready && found.game.files.length >= game.build.game_files;
+        if (!ready) {
+          detectedView = { kind: 'problem', code: game.problems[0] };
+        } else if (complete) {
+          detectedView = { kind: 'supported', dlc: found.dlc.length > 0 };
+        } else {
+          detectedView = { kind: 'incomplete', count: found.game.files.length, expected: game.build.game_files };
+        }
+        setButtons(ready);
         // the program is kept by the browser now, so the package can be made even if the connection drops
         const url = new URL(programPath(game.build), location.href).href;
         helper.then((controller) => controller.postMessage({ type: 'keep-program', url }), () => {});
@@ -220,11 +236,19 @@ document.getElementById('folder').addEventListener('change', async (event) => {
   if (!list.length) {
     return;
   }
-  const top = list[0].webkitRelativePath.split('/')[0] + '/';
-  await choose(list.map((file) => ({
-    path: file.webkitRelativePath.startsWith(top) ? file.webkitRelativePath.slice(top.length) : file.webkitRelativePath,
-    file,
-  })), top.slice(0, -1));
+  // the folder's name stays in the path: two folders (the game and its title update) can hold files of the same name
+  await choose(list.map((file) => ({ path: file.webkitRelativePath, file })));
+});
+
+document.getElementById('clear').addEventListener('click', () => {
+  check++;
+  entriesSoFar = [];
+  source = null;
+  chosenView = null;
+  detectedView = null;
+  setButtons(false);
+  renderChosen();
+  renderDetected();
 });
 
 // The zip is served by sw.js as a normal browser download, streamed while it is being generated.

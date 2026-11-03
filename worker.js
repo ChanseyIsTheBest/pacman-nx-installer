@@ -1,6 +1,7 @@
 // Runs the whole package build off the main thread and streams the zip to the download service worker.
 import createDxcModule from './wasm/dxc_web.mjs';
 import createLzxModule from './wasm/lzx.mjs';
+import createLzxDeltaModule from './wasm/lzxdelta.mjs';
 import createRenutHlslModule from './wasm/renut_hlsl.mjs';
 import createSpirvCrossModule from './wasm/spirv_cross.mjs';
 import { createPackage, findGame, identifyGame, programPath } from './lib/installer.js';
@@ -85,9 +86,12 @@ self.onmessage = async ({ data }) => {
       throw new Error(t('noGame'));
     }
     const manifest = JSON.parse(new TextDecoder().decode(await fetchBytes('./release/manifest.json')));
-    const { build, xexHash } = await identifyGame(chosen.game.files, manifest);
+    const { build, xexHash, problems } = await identifyGame(chosen, manifest);
     if (!build) {
       throw new Error(t('notSupportedYet', { hash: xexHash }));
+    }
+    if (problems.length) {
+      throw new Error(t(problems[0]));
     }
     log(t('downloadingBuild'));
     const [nro, licenses, renutShaderCommon] = await Promise.all([
@@ -103,6 +107,7 @@ self.onmessage = async ({ data }) => {
     const modules = {
       dxc: await createDxcModule(quiet()),
       lzx: await createLzxModule(quiet()),
+      lzxDelta: await createLzxDeltaModule(quiet()),
       renutHlsl: await createRenutHlslModule(quiet()),
       spirvCross: await createSpirvCrossModule(quiet()),
     };
